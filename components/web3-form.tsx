@@ -14,14 +14,17 @@ import {
   useWaitForTransactionReceipt,
   useReadContract,
 } from "wagmi";
-import { formatEther, parseUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { toast } from "sonner";
-import ERC20 from "@openzeppelin/contracts/build/contracts/ERC20.json"
+
+//import {abi a} from "@openzeppelin/contracts/build/contracts/ERC20.json"
 
 
 // USDT and USDC contract addresses on Ethereum mainnet
-const USDT_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
-const USDC_ADDRESS = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ADDRESS_ETH;
+const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS_ETH;
+
+console.log(USDC_ADDRESS);
 
 // ABI for ERC20 transfer function
 const ERC20_ABI = [
@@ -35,6 +38,14 @@ const ERC20_ABI = [
     ],
     outputs: [{ name: "", type: "bool" }],
   },
+  {
+    name: "balanceOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ "name": "account", "type": "address" }],
+    outputs: [{ "name": "", "type": "uint256" }]
+  }
+
 ] as const;
 
 export function Web3Form() {
@@ -45,24 +56,25 @@ export function Web3Form() {
     null
   );
 
-  const { address, isConnected } = useAccount();
+  const { address: _address, isConnected } = useAccount();
+  console.log("address: ", _address)
 
   // Get token balances
   const { data: usdtBalance } = useReadContract({
-    abi: ERC20.abi,
+    abi: ERC20_ABI,
     address: USDT_ADDRESS,
     functionName: 'balanceOf',
-    args: [address],
-  }) as { data: bigint }
+    args: [_address],
+  }) as { data: any }
 
   console.log("usdtbalance", usdtBalance);
 
   const { data: usdcBalance } = useReadContract({
-    abi: ERC20.abi,
+    abi: ERC20_ABI,
     address: USDC_ADDRESS,
     functionName: 'balanceOf',
-    args: [address],
-  }) as { data: bigint }
+    args: [_address],
+  }) as { data: any }
 
 
   // Contract write hook
@@ -90,11 +102,14 @@ export function Web3Form() {
         return;
       }
       console.log("Checking balance for", token);
-      
+
       // Check balance
       const balance = token === "USDT" ? usdtBalance : usdcBalance;
       console.log("Balance check passed", balance);
-      if (!formatEther(balance || BigInt(0)) || formatEther(balance || BigInt(0)) < amountToSend.toString()) {
+      const currentBalanceString = formatUnits(balance, 6);
+      const currentBalance = parseFloat(currentBalanceString);
+
+      if (Number.isNaN(currentBalance) || currentBalance < amountToSend) {
         toast.error(`Insufficient ${token} balance`);
         return;
       }

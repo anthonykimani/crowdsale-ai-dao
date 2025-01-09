@@ -14,6 +14,7 @@
     "@radix-ui/react-slot": "^1.1.1",
     "@reown/appkit": "^1.6.2",
     "@reown/appkit-adapter-wagmi": "^1.6.2",
+    "@supabase/supabase-js": "^2.47.12",
     "@tanstack/react-query": "^5.62.8",
     "@wagmi/core": "^2.16.1",
     "class-variance-authority": "^0.7.1",
