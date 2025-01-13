@@ -21,8 +21,8 @@ import { toast } from "sonner";
 
 
 // USDT and USDC contract addresses on Ethereum mainnet
-const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ADDRESS_ETH;
-const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS_ETH;
+const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ADDRESS_ETH as `0x${string}`;
+const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS_ETH as `0x${string}`;
 
 console.log(USDC_ADDRESS);
 
@@ -58,6 +58,8 @@ export function Web3Form() {
 
   const { address: _address, isConnected } = useAccount();
   console.log("address: ", _address)
+
+  if(_address === undefined ) return
 
   // Get token balances
   const { data: usdtBalance } = useReadContract({
