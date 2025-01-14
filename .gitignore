@@ -40,3 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 custom-elements.d.ts
+.eslintrc.json
+yarn.lock

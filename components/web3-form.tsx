@@ -6,10 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Info } from "lucide-react";
-import Image from "next/image";
 import {
   useAccount,
-  useBalance,
   useWriteContract,
   useWaitForTransactionReceipt,
   useReadContract,
@@ -18,7 +16,6 @@ import { formatUnits, parseUnits } from "viem";
 import { toast } from "sonner";
 
 //import {abi a} from "@openzeppelin/contracts/build/contracts/ERC20.json"
-
 
 // USDT and USDC contract addresses on Ethereum mainnet
 const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ADDRESS_ETH as `0x${string}`;
@@ -42,10 +39,32 @@ const ERC20_ABI = [
     name: "balanceOf",
     type: "function",
     stateMutability: "view",
-    inputs: [{ "name": "account", "type": "address" }],
-    outputs: [{ "name": "", "type": "uint256" }]
-  }
-
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    constant: false,
+    inputs: [
+      {
+        name: "_spender",
+        type: "address",
+      },
+      {
+        name: "_value",
+        type: "uint256",
+      },
+    ],
+    name: "approve",
+    outputs: [
+      {
+        name: "",
+        type: "bool",
+      },
+    ],
+    payable: false,
+    stateMutability: "nonpayable",
+    type: "function",
+  },
 ] as const;
 
 export function Web3Form() {
@@ -55,9 +74,8 @@ export function Web3Form() {
   const [selectedToken, setSelectedToken] = useState<"USDT" | "USDC" | null>(
     null
   );
-
   const { address: _address, isConnected } = useAccount();
-  console.log("address: ", _address)
+  console.log("address: ", _address);
 
   if(_address === undefined ) return
 
@@ -65,19 +83,18 @@ export function Web3Form() {
   const { data: usdtBalance } = useReadContract({
     abi: ERC20_ABI,
     address: USDT_ADDRESS,
-    functionName: 'balanceOf',
-    args: [_address],
-  }) as { data: any }
+    functionName: "balanceOf",
+    args: [_address as `0x${string}`],
+  }) as { data: bigint };
 
-  console.log("usdtbalance", usdtBalance);
+  console.log("usdtbalance", typeof usdtBalance);
 
   const { data: usdcBalance } = useReadContract({
     abi: ERC20_ABI,
     address: USDC_ADDRESS,
-    functionName: 'balanceOf',
-    args: [_address],
-  }) as { data: any }
-
+    functionName: "balanceOf",
+    args: [_address  as `0x${string}`],
+  }) as { data: bigint };
 
   // Contract write hook
   const { writeContractAsync, data: txHash } = useWriteContract();
@@ -119,7 +136,10 @@ export function Web3Form() {
       console.log("Balance check passed");
       // Convert amount to token decimals
       const decimals = token === "USDT" ? 6 : 6; // USDT and USDC both use 6 decimals
-      const amountInWei = parseUnits(amountToSend.toString(), decimals);
+      const amountInWei = parseUnits(
+        amountToSend.toString(),
+        decimals
+      );
 
       // Send transaction
       console.log(
@@ -129,6 +149,13 @@ export function Web3Form() {
         "toAddress",
         recipientAddress
       );
+
+      // await writeContractAsync({
+      //   address: token === "USDT" ? USDT_ADDRESS : USDC_ADDRESS,
+      //   abi: ERC20_ABI,
+      //   functionName: "approve",
+      //   args: [recipientAddress, amountInWei],
+      // });
 
       await writeContractAsync({
         address: token === "USDT" ? USDT_ADDRESS : USDC_ADDRESS,
@@ -189,7 +216,10 @@ export function Web3Form() {
         </div>
 
         {!isConnected ? (
-          <appkit-account-button />
+          <div>
+            {/* @ts-expect-error */}
+            <appkit-account-button />
+          </div>
         ) : amount ? (
           <>
             <div className="bg-gray-900/50 rounded-lg p-4 text-sm text-gray-300 flex gap-2">
@@ -225,26 +255,6 @@ export function Web3Form() {
                 Transaction in progress... Please wait for confirmation.
               </p>
             )}
-
-            <div className="space-y-4 pt-4 border-t border-gray-800">
-              <p className="text-sm text-gray-400">
-                This project{" "}
-                <span className="font-semibold">does not accept</span> BTC, ETH,
-                or TON as payment. Please send {totalCost} USDT or USDC to the
-                following address:
-              </p>
-              <div className="flex justify-center">
-                <div className="bg-white p-2 rounded-lg">
-                  <Image
-                    src="/placeholder.svg?height=200&width=200"
-                    alt="Payment QR Code"
-                    width={200}
-                    height={200}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </div>
           </>
         ) : null}
       </CardContent>
