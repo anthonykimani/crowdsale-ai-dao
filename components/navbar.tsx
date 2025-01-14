@@ -1,11 +1,9 @@
-"use client";
+'use client';
 
 import CrowdsaleAIDao from "@/public/img/ai-dao.png";
 import Image from "next/image";
-import { useAppKit } from "@reown/appkit/react";
 
 export function Navbar() {
-  const { open } = useAppKit();
   return (
     <nav className="border-b border-[#222222]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -22,12 +20,8 @@ export function Navbar() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <>
-              <button onClick={() => open()}>Open Connect Modal</button>
-              <button onClick={() => open({ view: "Networks" })}>
-                Open Network Modal
-              </button>
-            </>
+            {/* @ts-expect-error */}
+            <appkit-button />
           </div>
         </div>
       </div>
