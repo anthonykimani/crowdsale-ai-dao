@@ -8,7 +8,7 @@ export default function Home() {
       <Navbar />
         <div className="max-w-3xl mx-auto text-center mb-12">
           <h1 className="text-4xl md:text-6xl font-bold tracking-tighter mb-4 glow">
-            Web3 Platform
+            Crowdsale AI DAO
           </h1>
           <p className="text-lg text-muted-foreground">
             Experience the future of decentralized finance

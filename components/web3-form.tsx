@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,15 +15,14 @@ import {
 import { formatUnits, parseUnits } from "viem";
 import { toast } from "sonner";
 
-//import {abi a} from "@openzeppelin/contracts/build/contracts/ERC20.json"
-
-// USDT and USDC contract addresses on Ethereum mainnet
+// Validate contract addresses
 const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ADDRESS_ETH as `0x${string}`;
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS_ETH as `0x${string}`;
 
-console.log(USDC_ADDRESS);
+if (!USDT_ADDRESS || !USDC_ADDRESS) {
+  toast.error("Contract addresses not properly configured");
+}
 
-// ABI for ERC20 transfer function
 const ERC20_ABI = [
   {
     name: "transfer",
@@ -71,40 +70,110 @@ export function Web3Form() {
   const [amount, setAmount] = useState("");
   const [price] = useState("$0.003500");
   const [totalCost, setTotalCost] = useState("$0.000000");
-  const [selectedToken, setSelectedToken] = useState<"USDT" | "USDC" | null>(
-    null
-  );
+  const [selectedToken, setSelectedToken] = useState<"USDT" | "USDC" | null>(null);
   const { address: _address, isConnected } = useAccount();
-  console.log("address: ", _address);
 
-  if(_address === undefined ) return
+  // Show welcome toast on initial connection
+  useEffect(() => {
+    if (isConnected && _address) {
+      toast.success("Wallet connected successfully!", {
+        description: `Connected address: ${_address.slice(0, 6)}...${_address.slice(-4)}`,
+      });
+    }
+  }, [isConnected, _address]);
 
-  // Get token balances
-  const { data: usdtBalance } = useReadContract({
+  // Early validation for wallet connection
+  if (!_address || typeof _address !== 'string') {
+    return (
+      <Card className="w-full max-w-md border-green-900/20 bg-black/40 backdrop-blur-sm glow-border">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold tracking-tight glow text-green-400">
+            $DAOAI
+          </CardTitle>
+          <p className="text-sm text-gray-400">
+            Please connect your wallet to continue.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {/* @ts-expect-error */}
+          <appkit-account-button />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Get token balances with error handling
+  const { data: usdtBalance, isError: usdtError } = useReadContract({
     abi: ERC20_ABI,
     address: USDT_ADDRESS,
     functionName: "balanceOf",
     args: [_address as `0x${string}`],
-  }) as { data: bigint };
+  }) as { data: bigint; isError: boolean };
 
-  console.log("usdtbalance", typeof usdtBalance);
-
-  const { data: usdcBalance } = useReadContract({
+  const { data: usdcBalance, isError: usdcError } = useReadContract({
     abi: ERC20_ABI,
     address: USDC_ADDRESS,
     functionName: "balanceOf",
-    args: [_address  as `0x${string}`],
-  }) as { data: bigint };
+    args: [_address as `0x${string}`],
+  }) as { data: bigint; isError: boolean };
 
-  // Contract write hook
-  const { writeContractAsync, data: txHash } = useWriteContract();
+  // Show error if balance fetch fails
+  useEffect(() => {
+    if (usdtError || usdcError) {
+      toast.error("Failed to fetch token balances", {
+        description: "Please check your network connection and try again.",
+      });
+    }
+  }, [usdtError, usdcError]);
 
-  // Transaction receipt hook
-  const { isLoading: isTransactionLoading, isSuccess: isTransactionSuccess } =
-    useWaitForTransactionReceipt({ hash: txHash });
+  const { writeContractAsync, data: txHash, error: writeError } = useWriteContract();
+  
+  const { 
+    isLoading: isTransactionLoading, 
+    isSuccess: isTransactionSuccess,
+    isError: isTransactionError
+  } = useWaitForTransactionReceipt({ 
+    hash: txHash,
+  });
+
+  // Handle transaction states
+  useEffect(() => {
+    if (writeError) {
+      if (writeError.message.includes("rejected")) {
+        toast.error("Transaction rejected", {
+          description: "You declined the transaction in your wallet.",
+        });
+      } else {
+        toast.error("Transaction failed", {
+          description: writeError.message,
+        });
+      }
+    }
+  }, [writeError]);
+
+  useEffect(() => {
+    if (isTransactionError) {
+      toast.error("Transaction failed", {
+        description: "The transaction failed to execute. Please try again.",
+      });
+    }
+  }, [isTransactionError]);
+
+  useEffect(() => {
+    if (isTransactionSuccess && selectedToken) {
+      toast.success("Transaction successful!", {
+        description: `Successfully sent ${totalCost} ${selectedToken}. Transaction hash: ${txHash?.slice(0, 6)}...${txHash?.slice(-4)}`,
+      });
+    }
+  }, [isTransactionSuccess, selectedToken, totalCost, txHash]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    if (value === "" || isNaN(parseFloat(value))) {
+      setAmount("");
+      setTotalCost("$0.000000");
+      return;
+    }
     setAmount(value);
     const total = parseFloat(value) * 0.0035;
     setTotalCost(`$${total.toFixed(6)}`);
@@ -112,67 +181,93 @@ export function Web3Form() {
 
   const handleSendToken = async (token: "USDC" | "USDT") => {
     try {
-      setSelectedToken(token);
-      const recipientAddress = "0x8cb1174ed0bDFF74cd99CcBD690eEaa7288993cB"; // Replace with actual recipient address
-      const amountToSend = parseFloat(totalCost.replace("$", ""));
-      console.log("Sending", amountToSend, token, "to", recipientAddress);
-      if (isNaN(amountToSend) || amountToSend <= 0) {
-        toast.error("Please enter a valid amount");
+      // Validate contract addresses
+      if (!USDT_ADDRESS || !USDC_ADDRESS) {
+        toast.error("Configuration error", {
+          description: "Contract addresses are not properly configured.",
+        });
         return;
       }
-      console.log("Checking balance for", token);
 
-      // Check balance
+      setSelectedToken(token);
+      const recipientAddress = "0x8cb1174ed0bDFF74cd99CcBD690eEaa7288993cB";
+      
+      // Validate recipient address
+      if (!recipientAddress || !recipientAddress.startsWith('0x')) {
+        toast.error("Invalid recipient", {
+          description: "The recipient address is not valid.",
+        });
+        return;
+      }
+
+      const amountToSend = parseFloat(totalCost.replace("$", ""));
+      if (isNaN(amountToSend) || amountToSend <= 0) {
+        toast.error("Invalid amount", {
+          description: "Please enter a valid amount greater than 0.",
+        });
+        return;
+      }
+
+      // Balance validation
       const balance = token === "USDT" ? usdtBalance : usdcBalance;
-      console.log("Balance check passed", balance);
+      if (!balance) {
+        toast.error("Balance error", {
+          description: `Failed to fetch ${token} balance. Please try again.`,
+        });
+        return;
+      }
+
       const currentBalanceString = formatUnits(balance, 6);
       const currentBalance = parseFloat(currentBalanceString);
 
-      if (Number.isNaN(currentBalance) || currentBalance < amountToSend) {
-        toast.error(`Insufficient ${token} balance`);
+      if (!currentBalance || Number.isNaN(currentBalance)) {
+        toast.error("Balance error", {
+          description: `Invalid ${token} balance format.`,
+        });
         return;
       }
 
-      console.log("Balance check passed");
-      // Convert amount to token decimals
-      const decimals = token === "USDT" ? 6 : 6; // USDT and USDC both use 6 decimals
-      const amountInWei = parseUnits(
-        amountToSend.toString(),
-        decimals
+      if (currentBalance < amountToSend) {
+        toast.error("Insufficient balance", {
+          description: `You don't have enough ${token} to complete this transaction.`,
+        });
+        return;
+      }
+
+      // Convert amount to token decimals with validation
+      const decimals = 6;
+      let amountInWei: bigint;
+      try {
+        amountInWei = parseUnits(amountToSend.toString(), decimals);
+      } catch (error) {
+        toast.error("Conversion error", {
+          description: "Failed to convert the amount to the correct format.",
+        });
+        return;
+      }
+
+      // Show pending toast
+      toast.promise(
+        writeContractAsync({
+          address: token === "USDT" ? USDT_ADDRESS : USDC_ADDRESS,
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [recipientAddress, amountInWei],
+        }),
+        {
+          loading: "Transaction in progress...",
+          success: "Transaction submitted successfully!",
+          error: "Failed to submit transaction",
+        }
       );
-
-      // Send transaction
-      console.log(
-        "SendingWei",
-        amountInWei,
-        token,
-        "toAddress",
-        recipientAddress
-      );
-
-      // await writeContractAsync({
-      //   address: token === "USDT" ? USDT_ADDRESS : USDC_ADDRESS,
-      //   abi: ERC20_ABI,
-      //   functionName: "approve",
-      //   args: [recipientAddress, amountInWei],
-      // });
-
-      await writeContractAsync({
-        address: token === "USDT" ? USDT_ADDRESS : USDC_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: "transfer",
-        args: [recipientAddress, amountInWei],
-      });
+      
     } catch (error) {
-      toast.error("Transaction failed. Please try again.");
       console.error("Transaction error:", error);
+      toast.error("Transaction failed", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred. Please try again.",
+      });
     }
   };
-
-  // Show success message
-  if (isTransactionSuccess) {
-    toast.success(`Successfully sent ${totalCost} ${selectedToken}!`);
-  }
 
   return (
     <Card className="w-full max-w-md border-green-900/20 bg-black/40 backdrop-blur-sm glow-border">
@@ -196,6 +291,8 @@ export function Web3Form() {
             value={amount}
             onChange={handleAmountChange}
             className="bg-black/40 border-green-900/20 text-gray-100"
+            min="0"
+            step="0.000001"
           />
         </div>
         <div className="space-y-2">
@@ -215,12 +312,7 @@ export function Web3Form() {
           />
         </div>
 
-        {!isConnected ? (
-          <div>
-            {/* @ts-expect-error */}
-            <appkit-account-button />
-          </div>
-        ) : amount ? (
+        {amount ? (
           <>
             <div className="bg-gray-900/50 rounded-lg p-4 text-sm text-gray-300 flex gap-2">
               <Info className="h-5 w-5 flex-shrink-0 text-blue-400" />
