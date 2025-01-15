@@ -20,7 +20,7 @@ const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ADDRESS_ETH as `0x${string}`;
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS_ETH as `0x${string}`;
 
 if (!USDT_ADDRESS || !USDC_ADDRESS) {
-  toast.error("Contract addresses not properly configured");
+  console.error("Contract addresses not properly configured");
 }
 
 const ERC20_ABI = [
@@ -72,6 +72,32 @@ export function Web3Form() {
   const [totalCost, setTotalCost] = useState("$0.000000");
   const [selectedToken, setSelectedToken] = useState<"USDT" | "USDC" | null>(null);
   const { address: _address, isConnected } = useAccount();
+  
+  // Initialize all hooks first
+  const { writeContractAsync, data: txHash, error: writeError } = useWriteContract();
+  
+  const { 
+    isLoading: isTransactionLoading, 
+    isSuccess: isTransactionSuccess,
+    isError: isTransactionError
+  } = useWaitForTransactionReceipt({ 
+    hash: txHash
+  });
+
+  // Get token balances with error handling
+  const { data: usdtBalance, isError: usdtError } = useReadContract({
+    abi: ERC20_ABI,
+    address: USDT_ADDRESS,
+    functionName: "balanceOf",
+    args: [_address as `0x${string}`]
+  }) as { data: bigint; isError: boolean };
+
+  const { data: usdcBalance, isError: usdcError } = useReadContract({
+    abi: ERC20_ABI,
+    address: USDC_ADDRESS,
+    functionName: "balanceOf",
+    args: [_address as `0x${string}`]
+  }) as { data: bigint; isError: boolean };
 
   // Show welcome toast on initial connection
   useEffect(() => {
@@ -82,41 +108,6 @@ export function Web3Form() {
     }
   }, [isConnected, _address]);
 
-  // Early validation for wallet connection
-  if (!_address || typeof _address !== 'string') {
-    return (
-      <Card className="w-full max-w-md border-green-900/20 bg-black/40 backdrop-blur-sm glow-border">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold tracking-tight glow text-green-400">
-            $DAOAI
-          </CardTitle>
-          <p className="text-sm text-gray-400">
-            Please connect your wallet to continue.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {/* @ts-expect-error */}
-          <appkit-account-button />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Get token balances with error handling
-  const { data: usdtBalance, isError: usdtError } = useReadContract({
-    abi: ERC20_ABI,
-    address: USDT_ADDRESS,
-    functionName: "balanceOf",
-    args: [_address as `0x${string}`],
-  }) as { data: bigint; isError: boolean };
-
-  const { data: usdcBalance, isError: usdcError } = useReadContract({
-    abi: ERC20_ABI,
-    address: USDC_ADDRESS,
-    functionName: "balanceOf",
-    args: [_address as `0x${string}`],
-  }) as { data: bigint; isError: boolean };
-
   // Show error if balance fetch fails
   useEffect(() => {
     if (usdtError || usdcError) {
@@ -125,16 +116,6 @@ export function Web3Form() {
       });
     }
   }, [usdtError, usdcError]);
-
-  const { writeContractAsync, data: txHash, error: writeError } = useWriteContract();
-  
-  const { 
-    isLoading: isTransactionLoading, 
-    isSuccess: isTransactionSuccess,
-    isError: isTransactionError
-  } = useWaitForTransactionReceipt({ 
-    hash: txHash,
-  });
 
   // Handle transaction states
   useEffect(() => {
@@ -181,6 +162,13 @@ export function Web3Form() {
 
   const handleSendToken = async (token: "USDC" | "USDT") => {
     try {
+      if (!_address) {
+        toast.error("Wallet not connected", {
+          description: "Please connect your wallet to continue.",
+        });
+        return;
+      }
+
       // Validate contract addresses
       if (!USDT_ADDRESS || !USDC_ADDRESS) {
         toast.error("Configuration error", {
@@ -269,6 +257,88 @@ export function Web3Form() {
     }
   };
 
+  const content = !isConnected ? (
+    <CardContent>
+      <p className="text-sm text-gray-400 mb-4">
+        Please connect your wallet to continue.
+      </p>
+      {/* @ts-expect-error */}
+      <appkit-account-button />
+    </CardContent>
+  ) : (
+    <CardContent className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="amount" className="text-gray-300">
+          Amount $DAOAI
+        </Label>
+        <Input
+          id="amount"
+          type="number"
+          placeholder="Amount"
+          value={amount}
+          onChange={handleAmountChange}
+          className="bg-black/40 border-green-900/20 text-gray-100"
+          min="0"
+          step="0.000001"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label className="text-gray-300">Current $DAOAI price</Label>
+        <Input
+          value={price}
+          readOnly
+          className="bg-black/40 border-green-900/20 text-gray-100"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label className="text-gray-300">Total Cost</Label>
+        <Input
+          value={totalCost}
+          readOnly
+          className="bg-black/40 border-green-900/20 text-gray-100"
+        />
+      </div>
+
+      {amount ? (
+        <>
+          <div className="bg-gray-900/50 rounded-lg p-4 text-sm text-gray-300 flex gap-2">
+            <Info className="h-5 w-5 flex-shrink-0 text-blue-400" />
+            <p>
+              The amount of tokens, cost, and price displayed are estimates
+              and may vary if another unconfirmed transaction is confirmed
+              prior to the one you are about to send. Final values for the
+              token amount and cost will be determined at the time your funds
+              transfer is confirmed on-chain.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Button
+              onClick={() => handleSendToken("USDC")}
+              disabled={isTransactionLoading}
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50"
+            >
+              {isTransactionLoading ? "Sending..." : `Send ${totalCost} USDC`}
+            </Button>
+            <Button
+              onClick={() => handleSendToken("USDT")}
+              disabled={isTransactionLoading}
+              className="w-full bg-green-500 hover:bg-green-600 text-white disabled:opacity-50"
+            >
+              {isTransactionLoading ? "Sending..." : `Send ${totalCost} USDT`}
+            </Button>
+          </div>
+
+          {isTransactionLoading && (
+            <p className="text-sm text-center text-gray-400">
+              Transaction in progress... Please wait for confirmation.
+            </p>
+          )}
+        </>
+      ) : null}
+    </CardContent>
+  );
+
   return (
     <Card className="w-full max-w-md border-green-900/20 bg-black/40 backdrop-blur-sm glow-border">
       <CardHeader>
@@ -279,77 +349,7 @@ export function Web3Form() {
           An all-in-one platform bridging traditional finance with Web3.
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="amount" className="text-gray-300">
-            Amount $DAOAI
-          </Label>
-          <Input
-            id="amount"
-            type="number"
-            placeholder="Amount"
-            value={amount}
-            onChange={handleAmountChange}
-            className="bg-black/40 border-green-900/20 text-gray-100"
-            min="0"
-            step="0.000001"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-gray-300">Current $DAOAI price</Label>
-          <Input
-            value={price}
-            readOnly
-            className="bg-black/40 border-green-900/20 text-gray-100"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-gray-300">Total Cost</Label>
-          <Input
-            value={totalCost}
-            readOnly
-            className="bg-black/40 border-green-900/20 text-gray-100"
-          />
-        </div>
-
-        {amount ? (
-          <>
-            <div className="bg-gray-900/50 rounded-lg p-4 text-sm text-gray-300 flex gap-2">
-              <Info className="h-5 w-5 flex-shrink-0 text-blue-400" />
-              <p>
-                The amount of tokens, cost, and price displayed are estimates
-                and may vary if another unconfirmed transaction is confirmed
-                prior to the one you are about to send. Final values for the
-                token amount and cost will be determined at the time your funds
-                transfer is confirmed on-chain.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Button
-                onClick={() => handleSendToken("USDC")}
-                disabled={isTransactionLoading}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50"
-              >
-                {isTransactionLoading ? "Sending..." : `Send ${totalCost} USDC`}
-              </Button>
-              <Button
-                onClick={() => handleSendToken("USDT")}
-                disabled={isTransactionLoading}
-                className="w-full bg-green-500 hover:bg-green-600 text-white disabled:opacity-50"
-              >
-                {isTransactionLoading ? "Sending..." : `Send ${totalCost} USDT`}
-              </Button>
-            </div>
-
-            {isTransactionLoading && (
-              <p className="text-sm text-center text-gray-400">
-                Transaction in progress... Please wait for confirmation.
-              </p>
-            )}
-          </>
-        ) : null}
-      </CardContent>
+      {content}
     </Card>
   );
 }
